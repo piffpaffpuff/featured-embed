@@ -476,7 +476,7 @@ function get_featured_embed_data($post_id = null) {
 /**
  * Echo embed preview
  */
-function featured_embed_preview($size = 'medium', $post_id = null) {
+function featured_embed_preview($size = 'medium', $internal_embed = true, $post_id = null) {
 	global $featured_embed;
 	if(empty($post_id)) {
 		global $post;
@@ -490,10 +490,16 @@ function featured_embed_preview($size = 'medium', $post_id = null) {
 	$thumbnail_url = null;
 	$type = null;
 	if($data) {
-		$permalink = $featured_embed->get_permalink($post_id);
 		$source_url = $data->source_url;
 		$thumbnail_url = $data->thumbnail_url;
 		$type = $data->type;
+		
+		// directly link to the external source or the internal embed-code
+		if($internal_embed) {
+			$permalink = $featured_embed->get_permalink($post_id);
+		} else {
+			$permalink = $source_url;
+		}
 	}
 	
 	// Use the featured image as preview when it is set.
