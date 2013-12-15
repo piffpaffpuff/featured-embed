@@ -17,6 +17,11 @@
    Writepanel
 */
 
+#featured-embed-url-box {
+}
+#featured-embed-url-box div.error {
+	display: block;
+}
 #featured-embed-preview .preview {
 	position: relative;
 	margin-bottom: 1em;
@@ -57,7 +62,8 @@
 	font-variant: normal;
 	text-transform: none;	
 }
-#featured-embed-preview .action.play:before {
+#featured-embed-preview .action.video:before,
+#featured-embed-preview .action.rich:before {
 	/* play */
 	content: '\e800'; 
 	/* music
@@ -71,7 +77,8 @@
 	/* plus 
 	content: '\e801'; */
 }
-#featured-embed-preview .action.view:before {
+#featured-embed-preview .action.photo:before,
+#featured-embed-preview .action.link:before {
 	/* search */
 	content: '\e80a'; 
 }
@@ -85,9 +92,20 @@
 	height: 150px;
 	background-color: #d9d9d9;
 }
-#featured-embed-url-box {
-	overflow: hidden;
+#featured-embed-form input.regular-text {
+	width: 100%;
 }
+#featured-embed-form p {
+	position: relative;
+}
+#featured-embed-form .spinner {
+	position: absolute;
+	right: 0;
+	top: 50%;
+	margin-top: -10px;
+}
+
+/*
 #featured-embed-url-box .form-fieldset {
 	display: block;
 	margin: 0px;
@@ -121,3 +139,4 @@
 	position: relative;
 	display: block;
 }
+*/

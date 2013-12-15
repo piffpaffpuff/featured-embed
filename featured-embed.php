@@ -70,23 +70,13 @@ class FeaturedEmbed {
 	public function load() {
 		// include the classes
 		$this->includes();
-		
-		// activation hooks
-		register_activation_hook(self::$plugin_file_path, array($this, 'activate'));
-						
+					
 		// load hooks
 		add_action('plugins_loaded', array($this, 'load_translation'));
 		add_action('init', array($this, 'hooks_init'));
 		add_action('admin_init', array($this, 'hooks_admin'));
 	}
-	
-	/**
-	 * Activation
-	 */
-	public function activate() {
-   		flush_rewrite_rules();
-	}
-		
+
 	/**
 	 * Load the translations
 	 */
@@ -98,14 +88,9 @@ class FeaturedEmbed {
 	 * Load the main hooks
 	 */
 	public function hooks_init() {
- 		$this->create_rewrite_rules();
-
  		add_theme_support('post-thumbnails');		
-	
-		add_action('wp_ajax_delete_embed_data', array($this, 'delete_embed_data_with_ajax'));
-		add_action('wp_ajax_load_oembed_html', array($this, 'load_oembed_html_with_ajax'));
-		add_action('wp_ajax_nopriv_load_oembed_html', array($this, 'load_oembed_html_with_ajax'));
-		add_action('parse_request', array($this, 'parse_query'));	
+		add_action('wp_ajax_add_embed_meta', array($this, 'add_embed_meta_with_ajax'));
+		add_action('wp_ajax_delete_embed_meta', array($this, 'delete_embed_meta_with_ajax'));
 	}
 	
 	/**
@@ -119,38 +104,7 @@ class FeaturedEmbed {
 		add_action('add_meta_boxes', array($this, 'add_boxes'));
 		add_action('save_post', array($this, 'save_box_data'));
 	}
-	
-	/**
-	 * Create the rewrite rules for the query.
-	 * This makes it possible to directly access
-	 * a stored embed html with a nice url.
-	 */
-	public function create_rewrite_rules() {
-		// add the query var
-    	add_rewrite_tag( '%featured_embed%', '(.+?)');
-    	// add the rewrite rule
-		add_rewrite_rule($this->slug . '/([^/]+)/?$', 'index.php?featured_embed=$matches[1]', 'top');
-	}
-
-	/**
-	 * Generate embed link
-	 */
-	public function get_permalink($post_id = null) {
-		return home_url() . '/' . $this->slug . '/' . $post_id . '/';
-	}
 		
-	/**
-	 * Parse request for query vars
-	 */
-	public function parse_query($wp) {
-		if(array_key_exists('featured_embed', $wp->query_vars) && !empty($wp->query_vars['featured_embed'])) {
-			// show the html embed
-			$data = $this->load_embed_data($wp->query_vars['featured_embed']);
-			echo($data->html);
-			exit;
-		}
-	}
-	
 	/**
 	 * Add the styles
 	 */
@@ -184,16 +138,18 @@ class FeaturedEmbed {
 	 */
 	public function create_box_url($post, $metabox) {
 		// Get the data
-		$data = $this->load_embed_data($post->ID);
-		$source_url = null;
-		$thumbnail_url = null;
+		$data = $this->get_meta($post->ID, 'embed');
 		$type = null;
+		$source_url = null;
+		$iframe_url = null;
+		$thumbnail_url = null;
 		if($data) {
-			$source_url = $data->source_url;
-			$thumbnail_url = $data->thumbnail_url;
 			$type = $data->type;
+			$source_url = $data->source_url;
+			$iframe_url = $data->iframe_url;
+			$thumbnail_url = $data->thumbnail_url;
 		}
-
+			
 		// Use nonce for verification
 		wp_nonce_field(self::$plugin_basename, 'featured_embed_nonce');
 		
@@ -202,15 +158,15 @@ class FeaturedEmbed {
 		
 		<div id="featured-embed-form" class="<?php if(!empty($source_url)) : ?>hidden<?php endif; ?>">
 			<p><input type="text" id="featured-embed-url" class="regular-text code" name="featured_embed[url]" placeholder="http://" value="<?php echo $source_url; ?>" title="<?php _e('URL', 'featured-embed'); ?>"></p>
-			<p class="howto"><?php _e('Use an URL from YouTube, Vimeo, SoundCloud or BandCamp.', 'featured-embed'); ?></p>
+			<p class="howto"><?php _e('Use an URL from YouTube, Vimeo or SoundCloud.', 'featured-embed'); ?></p>
 		</div>
 		
 		<div id="featured-embed-preview" class="<?php if(empty($source_url)) : ?>hidden<?php endif; ?>">
 			<div class="preview">
-				<a href="<?php echo $this->get_permalink($post->ID); ?>?TB_iframe=true&width=480&height=260" class="thumbnail thickbox <?php if(empty($thumbnail_url)) : ?>placeholder<?php endif; ?>" target="_blank">
+				<a href="<?php echo $iframe_url; ?>?TB_iframe=true&width=480&height=270" class="thumbnail thickbox <?php echo $type; ?> <?php if(empty($thumbnail_url)) : ?>placeholder<?php endif; ?>" target="_blank">
 					<?php if(isset($thumbnail_url)) : ?><img src="<?php echo $thumbnail_url; ?>"><?php endif; ?>
 				</a>
-				<a href="<?php echo $this->get_permalink($post->ID); ?>?TB_iframe=true&width=480&height=260" class="action thickbox <?php if($type == 'video' || $type == 'rich') : ?>play<?php else : ?>view<?php endif; ?>" target="_blank">
+				<a href="<?php echo $iframe_url; ?>?TB_iframe=true&width=480&height=270" class="action thickbox <?php echo $type; ?>" target="_blank">
 					<span><?php _e('Preview', 'featured-embed'); ?></span>
 				</a>
 			</div>
@@ -225,7 +181,7 @@ class FeaturedEmbed {
 	 * http://codex.wordpress.org/Embeds
 	 * http://oembed.com
 	 */
-	public function discover_embed_data($url) {
+	public function discover_embed_data($url, $width = null) {
 		// Check bandcamp url. This needs some custom data.
 		// wp_oembed_add_provider('http://bandcamp.com/album/*', 'http://soundcloud.com/oembed');
 		// http://ladi6.bandcamp.com
@@ -233,84 +189,114 @@ class FeaturedEmbed {
 		// Get the wordpress internal oembed class
 		$oembed = _wp_oembed_get_object();
 		
-		// Discover the embedding code via url
+		// Default args
+		$default_args = array(
+			'discover' => true
+		);
+		
+		// Set a custom width different from the 
+		// template $content_width var.
+		// Rise the size by factor 1.5 to really 
+		// get a thumbnail that is a large enough.
+		if(empty($width)) {
+			$args = wp_embed_defaults();
+			$args['width'] = $args['width'] * 1.5;
+			$args['height'] = ($args['width'] / (16/9)) * 1.5;
+		} else {
+			$args = array(
+				'width' => $width * 1.5,
+				'height' => ($width / (16/9)) * 1.5
+			);
+		}
+
+		// Merge args
+		$args = wp_parse_args($args, $default_args);
+		
+		// Discover the embedding code via url		
 		$provider = $oembed->discover($url);
 		if($provider) {		
-			$data = $oembed->fetch($provider, $url, array('discover'));
+			$data = $oembed->fetch($provider, $url, $args);
 			if($data) {
+				// Parse the html code to find the iframe src url
+				// and add it to the output data.
+				// Suppress any load errors of domdocument.
+				$dom = new DomDocument();
+				@$dom->loadHTML($data->html);
+				$iframes = $dom->getElementsByTagName('iframe');
+				if($iframes->length > 0) {
+					$data->iframe_url = $iframes->item(0)->getAttribute('src');
+				}
+
+				// Add the source url
+				$data->source_url = $url;
 				return $data;
 			}
 		}
 		
 		return;
 	}
-	
+
 	/**
-	 * Get embed meta data from database
+	 * Add meta data
 	 */
-	public function load_embed_data($post_id) {
-		// Load the oembed code from the database
-		$meta = $this->get_meta($post_id, 'oembed');
-		if($meta) {
-			$meta->source_url = $this->get_meta($post_id, 'url');
-		}
-		return $meta;		
+	public function add_embed_meta($post_id, $url, $embed) {
+		$this->set_meta($post_id, 'url', $url);
+		$this->set_meta($post_id, 'embed', $embed);
 	}
 
 	/**
-	 * Delete meta data
+	 * Add meta data via ajax
 	 */
-	public function delete_embed_data_with_ajax() {
+	public function add_embed_meta_with_ajax() {
 		// Verify post data and nonce
 		if(empty($_POST) || empty($_POST['post_id']) || empty($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], self::$plugin_basename)) {
 			die();
 		}
 		
-		// Set the defaults
-		$url = null;
-		$oembed = null;
-		if($_POST['url']) {
-			$url = $_POST['url'];
-		}
-		if($_POST['url']) {
-			$oembed = $_POST['oembed'];
-		}
+		// Get the embed data
+		$url = $_POST['url'];		
+		$meta_url = $this->get_meta($_POST['post_id'], 'url');
+		
+		// Discover the embed code when there is a new one	
+		if(!empty($url)) {
+			$data = $this->discover_embed_data($url);
+		}		
 		
 		// Set the meta
-		$this->set_meta($_POST['post_id'], 'url', $url);
-		$this->set_meta($_POST['post_id'], 'oembed', $oembed);
-		
-		die('success');
+		if(isset($data)) {
+			$this->add_embed_meta($_POST['post_id'], $url, $data);
+			die('1');
+			exit;
+		} else {
+			$this->delete_embed_meta($_POST['post_id']);
+			die('0');
+			exit;
+		}
 		exit;
 	}
 
-	
 	/**
-	 * Get embed html
+	 * Delete meta data
 	 */
-	public function load_embed_html($post_id) {		
-		$data = $this->load_embed_data($post_id);	
-		if($data) {
-			return $data->html;
-		}
-		return;
+	public function delete_embed_meta($post_id) {
+		$this->set_meta($post_id, 'url', null);
+		$this->set_meta($post_id, 'embed', null);
 	}
 
-			
 	/**
-	 * Invalid url notice in the backend
+	 * Delete meta data via ajax
 	 */
-	 /*
-	public function invalid_url_notice() {
-		?>
-		<div id="message">
-			 <p><?php _e('The URL can\'t be embedded.', 'featured-embed'); ?></p>
-		</div>
-		<?php
+	public function delete_embed_meta_with_ajax() {
+		// Verify post data and nonce
+		if(empty($_POST) || empty($_POST['post_id']) || empty($_POST['nonce']) || !wp_verify_nonce($_POST['nonce'], self::$plugin_basename)) {
+			die();
+		}
 		
-		//remove_action('admin_notices', array($this, 'invalid_url_notice'));
+		// Delete the meta
+		$this->delete_embed_meta($_POST['post_id']);
+		die('1');
+		exit;
 	}
-	*/
 	
 	/**
 	 * Save the box data
@@ -351,24 +337,21 @@ class FeaturedEmbed {
 			// Get the embed data
 			$url = $_POST['featured_embed']['url'];		
 			$meta_url = $this->get_meta($post_id, 'url');
-			
+				
 			// Only get data for new urls
 			if($url != $meta_url) {
 				if(empty($url)) {
 					// Reset the data when the url is empty
-					$_POST['featured_embed']['oembed'] = null;
+					$_POST['featured_embed']['url'] = null;
+					$_POST['featured_embed']['embed'] = null;
 				} else {
 					// Discover the embed code when there is a new one	
 					$data = $this->discover_embed_data($url);
-
 					if(!empty($data)) {
-						$_POST['featured_embed']['oembed'] = $data;
+						$_POST['featured_embed']['embed'] = $data;
 					} else {
 						$_POST['featured_embed']['url'] = null;
-						$_POST['featured_embed']['oembed'] = null;
-
-						// Show an error if the url can't be used
-						//add_action('admin_notices', array($this, 'invalid_url_notice'));
+						$_POST['featured_embed']['embed'] = null;
 					}
 				}	
 			}
@@ -424,81 +407,29 @@ function has_featured_embed($post_id = null) {
 }
 
 /**
- * Get embed permalink
- */
-function get_featured_embed_permalink($post_id = null) {
-	if(empty($post_id)) {
-		global $post;
-		$post_id = $post->ID;
-	}
-	global $featured_embed;
-	return $featured_embed->get_permalink($post_id);
-}
- 
-/**
- * Echo embed permalink
- */
-function featured_embed_permalink($post_id = null) {
-	echo get_featured_embed_permalink($post_id);
-}
-
-/**
- * Get embed html
- */
-function get_featured_embed_html($post_id = null) {
-	if(empty($post_id)) {
-		global $post;
-		$post_id = $post->ID;
-	}
-	global $featured_embed;
-	return $featured_embed->load_embed_html($post_id);
-}
-
-/**
- * Echo embed html
- */
-function featured_embed_html($post_id = null) {
-	echo get_featured_embed_html($post_id);
-}
-
-/**
- * Get embed data
- */
-function get_featured_embed_data($post_id = null) {
-	if(empty($post_id)) {
-		global $post;
-		$post_id = $post->ID;
-	}
-	global $featured_embed;
-	return $featured_embed->load_embed_data($post_id);
-}
-
-/**
  * Echo embed preview
  */
-function featured_embed_preview($size = 'medium', $internal_embed = true, $post_id = null) {
-	global $featured_embed;
+function featured_embed_preview($post_id = null) {
 	if(empty($post_id)) {
 		global $post;
 		$post_id = $post->ID;
 	}
 	
 	// Load the embed data
-	$data = get_featured_embed_data($post_id);
-	$permalink = '#';
-	$source_url = null;
-	$thumbnail_url = null;
+	global $featured_embed;
+	$data = $featured_embed->get_meta($post_id, 'embed');
 	$type = null;
+	$source_url = null;
+	$iframe_url = null;
+	$thumbnail_url = null;
+	$ratio = null;
 	if($data) {
-		$source_url = $data->source_url;
-		$thumbnail_url = $data->thumbnail_url;
 		$type = $data->type;
-		
-		// directly link to the external source or the internal embed-code
-		if($internal_embed) {
-			$permalink = $featured_embed->get_permalink($post_id);
-		} else {
-			$permalink = $source_url;
+		$source_url = $data->source_url;
+		$iframe_url = $data->iframe_url;
+		$thumbnail_url = $data->thumbnail_url;
+		if(isset($data->thumbnail_width)) {
+			$ratio = $data->thumbnail_width / $data->thumbnail_height;
 		}
 	}
 	
@@ -511,10 +442,20 @@ function featured_embed_preview($size = 'medium', $internal_embed = true, $post_
 
 	if($data) : ?>
 	<div class="featured-embed-preview">
-		<a href="<?php echo $permalink; ?>" class="thumbnail <?php if(empty($thumbnail_url)) : ?>placeholder<?php endif; ?>" target="_blank">
-			<?php if(isset($thumbnail_url)) : ?><img src="<?php echo $thumbnail_url; ?>"><?php endif; ?>
+		<a href="<?php echo $iframe_url; ?>" class="thumbnail <?php echo $type ?> <?php if(empty($thumbnail_url)) : ?>placeholder<?php endif; ?> <?php if(isset($ratio) && $ratio < 16/9) : ?>no-widescreen<?php endif; ?>" target="_blank">
+			<?php if(isset($thumbnail_url)) : ?>
+				<img src="<?php echo $thumbnail_url; ?>">
+			
+				<?php /*// Add the thumbnail as background image to crop the display area. ?>
+				<?php if(isset($ratio) && $ratio < 16/9 && $type == 'video') : ?>
+					<!-- background-thumbnail -->
+					<span style="background-image: url('<?php echo $thumbnail_url; ?>');"></span>
+					<!-- /background-thumbnail -->
+				<?php endif; */ ?>
+				
+			<?php endif; ?>
 		</a>
-		<a href="<?php echo $permalink; ?>" class="action <?php if($type == 'video' || $type == 'rich') : ?>play<?php else : ?>view<?php endif; ?>" target="_blank">
+		<a href="<?php echo $iframe_url; ?>" class="action <?php echo $type ?>" target="_blank">
 			<span><?php if($type == 'video' || $type == 'rich') : ?><?php _e('Play', 'featured-embed'); ?><?php else : ?><?php _e('View', 'featured-embed'); ?><?php endif; ?></span>
 		</a>
 	</div>
