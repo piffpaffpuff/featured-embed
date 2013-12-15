@@ -1,17 +1,5 @@
 jQuery(document).ready(function($) {
-	
-	//console.log($('#featured-embed-url'));
-	$('#featured-embed-url').on('focus', function(event) {
 		
-		var field = $(this);
-		if(field.val() != '') {
-			$('#featured-embed-form .spinner').show();
-		} else {
-			$('#featured-embed-form .spinner').hide();
-		}
-		
-	});
-	
 	$('#featured-embed-remove').on('click', function(event) {
 		
 		event.preventDefault();

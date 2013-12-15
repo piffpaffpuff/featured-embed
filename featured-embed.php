@@ -143,13 +143,24 @@ class FeaturedEmbed {
 		$source_url = null;
 		$iframe_url = null;
 		$thumbnail_url = null;
+		
+		// Set the vars
 		if($data) {
 			$type = $data->type;
 			$source_url = $data->source_url;
 			$iframe_url = $data->iframe_url;
 			$thumbnail_url = $data->thumbnail_url;
-		}
 			
+			// Add Thickbox Lightbox params to the query to open the url properly
+			$args = array(
+				'autoplay' => true,
+				'TB_iframe' => true,
+				'width' => 480,
+				'height' => 270
+			);
+			$iframe_url = add_query_arg($args, $iframe_url);
+		}
+		
 		// Use nonce for verification
 		wp_nonce_field(self::$plugin_basename, 'featured_embed_nonce');
 		
@@ -163,10 +174,10 @@ class FeaturedEmbed {
 		
 		<div id="featured-embed-preview" class="<?php if(empty($source_url)) : ?>hidden<?php endif; ?>">
 			<div class="preview">
-				<a href="<?php echo $iframe_url; ?>?TB_iframe=true&width=480&height=270" class="thumbnail thickbox <?php echo $type; ?> <?php if(empty($thumbnail_url)) : ?>placeholder<?php endif; ?>" target="_blank">
+				<a href="<?php echo $iframe_url; ?>" class="thumbnail thickbox <?php echo $type; ?> <?php if(empty($thumbnail_url)) : ?>placeholder<?php endif; ?>" target="_blank">
 					<?php if(isset($thumbnail_url)) : ?><img src="<?php echo $thumbnail_url; ?>"><?php endif; ?>
 				</a>
-				<a href="<?php echo $iframe_url; ?>?TB_iframe=true&width=480&height=270" class="action thickbox <?php echo $type; ?>" target="_blank">
+				<a href="<?php echo $iframe_url; ?>" class="action thickbox <?php echo $type; ?>" target="_blank">
 					<span><?php _e('Preview', 'featured-embed'); ?></span>
 				</a>
 			</div>
@@ -423,13 +434,25 @@ function featured_embed_preview($post_id = null) {
 	$iframe_url = null;
 	$thumbnail_url = null;
 	$ratio = null;
+	
+	// Set the vars when an embed data exists
 	if($data) {
 		$type = $data->type;
 		$source_url = $data->source_url;
 		$iframe_url = $data->iframe_url;
 		$thumbnail_url = $data->thumbnail_url;
+		
+		// Check the aspect ratio
 		if(isset($data->thumbnail_width)) {
 			$ratio = $data->thumbnail_width / $data->thumbnail_height;
+		}
+		
+		// Set autoplay to true when it is a video
+		if($type == 'video') {
+			$args = array(
+				'autoplay' => true
+			);
+			$iframe_url = add_query_arg($args, $iframe_url);
 		}
 	}
 	
