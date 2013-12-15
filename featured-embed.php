@@ -154,6 +154,7 @@ class FeaturedEmbed {
 			// Add Thickbox Lightbox params to the query to open the url properly
 			$args = array(
 				'autoplay' => true,
+				'auto_play' => true,
 				'TB_iframe' => true,
 				'width' => 480,
 				'height' => 270
@@ -448,9 +449,10 @@ function featured_embed_preview($post_id = null) {
 		}
 		
 		// Set autoplay to true when it is a video
-		if($type == 'video') {
+		if($type == 'video' || $type == 'rich') {
 			$args = array(
-				'autoplay' => true
+				'autoplay' => true,
+				'auto_play' => true
 			);
 			$iframe_url = add_query_arg($args, $iframe_url);
 		}
@@ -466,17 +468,7 @@ function featured_embed_preview($post_id = null) {
 	if($data) : ?>
 	<div class="featured-embed-preview">
 		<a href="<?php echo $iframe_url; ?>" class="thumbnail <?php echo $type ?> <?php if(empty($thumbnail_url)) : ?>placeholder<?php endif; ?> <?php if(isset($ratio) && $ratio < 16/9) : ?>no-widescreen<?php endif; ?>" target="_blank">
-			<?php if(isset($thumbnail_url)) : ?>
-				<img src="<?php echo $thumbnail_url; ?>">
-			
-				<?php /*// Add the thumbnail as background image to crop the display area. ?>
-				<?php if(isset($ratio) && $ratio < 16/9 && $type == 'video') : ?>
-					<!-- background-thumbnail -->
-					<span style="background-image: url('<?php echo $thumbnail_url; ?>');"></span>
-					<!-- /background-thumbnail -->
-				<?php endif; */ ?>
-				
-			<?php endif; ?>
+			<?php if(isset($thumbnail_url)) : ?><img src="<?php echo $thumbnail_url; ?>"><?php endif; ?>
 		</a>
 		<a href="<?php echo $iframe_url; ?>" class="action <?php echo $type ?>" target="_blank">
 			<span><?php if($type == 'video' || $type == 'rich') : ?><?php _e('Play', 'featured-embed'); ?><?php else : ?><?php _e('View', 'featured-embed'); ?><?php endif; ?></span>
